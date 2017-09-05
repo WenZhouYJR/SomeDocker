@@ -4,6 +4,8 @@
 
 * centos7
 * docker 17.06.1-ce
+* 安装docker-compose
+* 安装docker-machine
 
 **自动部署**
 
@@ -113,4 +115,24 @@ ac0f27bb97e2        microbox/etcd:latest           "/bin/etcd -addr 1..."   2 da
 ```
 此时,本地通过访问```localhost:8080```,或者其他地方访问本机```<ip>:8080```就能看到shipyard的登录界面,初始化账号密码是```admin/shipyard```
 
+**增加节点**
+
+shipyard增加节点只需要在节点机上运行命令,其中10.0.1.10要改为manager节点的地址
+
+```curl -sSL https://shipyard-project.com/deploy | ACTION=node DISCOVERY=etcd://10.0.1.10:4001 bash -s```
+
+或者阅读脚本命令,自己手动部署,效果相同
+
+# 本地仓库搭建
+**通过镜像方式**
+docker官方提供了创建私有仓库的镜像```registry```,只需要简单的拉下来跑起来就能拥有一个私有仓库,私有仓库默认端口是5000,运行如下命令启动私有仓库,其中```--restart=always```定义了,这个容器在每次docker启动的时候就会自动运行,加入这个属性可以避免重启docker服务后还要手动启动一堆容器,```-v /mnt/registry:/var/lib/registry```是将容器里的```/var/lib/registry```路径挂在到本地的```/mnt/registry```路径,这个可以避免误删容器时将存储的数据删除了
+```bash
+docker run -d \
+  -p 5000:5000 \
+  --restart=always \
+  --name registry \
+  -v /mnt/registry:/var/lib/registry \
+  registry:2
+```
+> registry有很多的配置可以修改,可以自定义端口,自定义数据存放地址等等一系列配置,具体配置可以看官方文档,[resigty部分](https://docs.docker.com/registry/configuration/#list-of-configuration-options)
 
