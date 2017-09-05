@@ -205,7 +205,7 @@ $ docker run -d \
   -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/domain.crt \
   -e REGISTRY_HTTP_TLS_KEY=/certs/domain.key \
   -p 80:80 \
-  registry:2
+  registry:latest
 ```
 在远程节点机上,还需要将私钥```domain.crt```复制到```/etc/docker/certs.d/myregistrydomain.com:5000/ca.crt```下,```myregistrydomain.com```要与证书内配置的地址一致,然后重启docker服务即可通过https远程访问私有仓库
 若还是不能访问,提示认证问题,则可能是某些系统拦截了证书请求,考虑将证书加入到系统信任中,针对不同linux系统,方法不同
@@ -232,6 +232,8 @@ $ update-ca-trust enable
 然后重启docker服务,再尝试访问私有仓库
 
 > 网上流行用nginx反向代理做https认证,虽然我也没搞明白为什么要这么做,但依葫芦画瓢我也写下来
+
+**通过nginx反向代理设置https服务**
 
 首先安装最新的nginx,不会的可以参考[官方文档](http://nginx.org/en/linux_packages.html)进行安装
 大致是先按照官方文档添加```yum```源,然后通过```yum makecache```创建缓存,如果出问题,可以尝试先```yum clean all```清理缓存,再重新创建,最后通过```yum install nginx```安装nginx
