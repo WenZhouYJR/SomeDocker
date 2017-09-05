@@ -35,7 +35,7 @@
 第二步,启动容器
 首先启动rethinkdb,执行下面命令即可
 ```bash
-docker run \
+$ docker run \
     -ti \
     -d \
     --restart=always \
@@ -44,7 +44,7 @@ docker run \
 ```
 然后启动discovery,这个的功能是向swarm集群提供发现服务的,运行下面的命令
 ```bash
-docker run \
+$ docker run \
     -ti \
     -d \
     -p 4001:4001 \
@@ -55,7 +55,7 @@ docker run \
 ```
 然后运行proxy代理服务,docker默认监听socket,通过代理服务可以将tcp等进行转发
 ```bash
-docker run \
+$ docker run \
     -ti \
     -d \
     -p 2375:2375 \
@@ -68,7 +68,7 @@ docker run \
 ```
 然后运行swarm manager,swarm是docker提供的集群功能,swarm manager可以管理多个swarm agent,命令中的```<IP-OF-HOST>```是当前电脑的ip地址
 ```bash
-docker run \
+$ docker run \
     -ti \
     -d \
     --restart=always \
@@ -78,7 +78,7 @@ docker run \
 ```
 然后运行swarm agent,这是为了将本机也加入到集群节点之中,命令如下,第一个```<ip-of-host>```是当前电脑的ip,第二个是etcd发现服务电脑的ip,由于本机是manager节点,所以此处也填本机ip,若本机作为子节点,则应填入manager的ip地址
 ```bash
-docker run \
+$ docker run \
     -ti \
     -d \
     --restart=always \
@@ -88,7 +88,7 @@ docker run \
 ```
 最后,运行shipyard-controller容器,```--link```参数是用来链接其他容器,这里将shipyard-rethinkdb映射到controller里,controller访问rethinkdb时,直接写rethinkdb就行,不用再去找rethinkdb的ip地址
 ```bash
-docker run \
+$ docker run \
     -ti \
     -d \
     --restart=always \
@@ -127,7 +127,7 @@ shipyard增加节点只需要在节点机上运行命令,其中10.0.1.10要改�
 **通过镜像方式**
 docker官方提供了创建私有仓库的镜像```registry```,只需要简单的拉下来跑起来就能拥有一个私有仓库,私有仓库默认端口是5000,运行如下命令启动私有仓库,其中```--restart=always```定义了,这个容器在每次docker启动的时候就会自动运行,加入这个属性可以避免重启docker服务后还要手动启动一堆容器,```-v /mnt/registry:/var/lib/registry```是将容器里的```/var/lib/registry```路径挂在到本地的```/mnt/registry```路径,这个可以避免误删容器时将存储的数据删除了
 ```bash
-docker run -d \
+$ docker run -d \
   -p 5000:5000 \
   --restart=always \
   --name registry \
@@ -136,3 +136,103 @@ docker run -d \
 ```
 > registry有很多的配置可以修改,可以自定义端口,自定义数据存放地址等等一系列配置,具体配置可以看官方文档,[resigty部分](https://docs.docker.com/registry/configuration/#list-of-configuration-options)
 
+registry容器跑起来后,在本地就可以上传镜像了,首先需要用```docker tag```命令修改镜像名字,docker镜像的命名规则是
+
+```registry<url>:port/namespace/imagename:tag```
+
+举例,通过```docker tag shipyard/shipyard:latest localhost:5000/shipyard/shipyard:latest```将shipyard镜像改为了```localhost:5000/shipyard/shipyard```
+
+然后通过```docker push localhost:5000/shipyard/shipyard:latest```就能讲这个镜像上传到私有仓库
+
+通过```docker rmi <imageID>```删除shipyard的镜像,然后通过```docker pull localhost:5000/shipyard/shipyard:latest```拉取镜像,已验证是否成功
+
+> 目前的registry还只能在本地使用,要想在其他docker节点机上拉取或上传私有仓库,还需要配置一下
+
+**配置其他机器使用registry**
+
+由于docker仅允许```https```访问registry,所以,在其他节点上,直接访问registry节点的ip访问不过去,提示认证失败等错误,有两种方法可用
+
+方法一:
+修改或创建```/etc/docker/daemon.json```
+加入如下内容
+```json
+{
+  "insecure-registries" : ["myregistrydomain.com:5000"]
+}
+```
+然后```systemctl restart docker```重启docker服务,这样就能通过```http```连上私有仓库了
+> daemon.json还有很多其他可以配置的属性,可以看[daemon CLI reference](https://docs.docker.com/edge/engine/reference/commandline/dockerd/)
+
+方法二:
+获取CA认证,此处采用个人签名证书,有钱可以上权威认证证书
+首先运行如下命令创建公钥和私钥
+```bash
+$ mkdir -p certs
+
+$ openssl req \
+  -newkey rsa:4096 -nodes -sha256 -keyout certs/domain.key \
+  -x509 -days 365 -out certs/domain.crt
+```
+运行这段命令后会让你输入一些信息,可以自由发挥,但域名那一栏一定不能乱填,不能搞事情,下面是参考
+```bash
+Generating a 4096 bit RSA private key
+.........................................................................................................................................................................................................++
+...++
+writing new private key to 'certs/domain.key'
+-----
+You are about to be asked to enter information that will be incorporated
+into your certificate request.
+What you are about to enter is what is called a Distinguished Name or a DN.
+There are quite a few fields but you can leave some blank
+For some fields there will be a default value,
+If you enter '.', the field will be left blank.
+-----
+Country Name (2 letter code) [AU]:CN
+State or Province Name (full name) [Some-State]:Chongqing
+Locality Name (eg, city) []:Chongqing
+Organization Name (eg, company) [Internet Widgits Pty Ltd]:SpringAirline
+Organizational Unit Name (eg, section) []:QC
+Common Name (e.g. server FQDN or YOUR name) []:czy.registry.com
+Email Address []:docker@inner.czy.com
+```
+证书生成之后可以按照官方文档的样子启动容器,[TLS模式重启registry](https://docs.docker.com/registry/deploying/#get-a-certificate)
+```bash
+$ docker run -d \
+  --restart=always \
+  --name registry \
+  -v `pwd`/certs:/certs \
+  -e REGISTRY_HTTP_ADDR=0.0.0.0:80 \
+  -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/domain.crt \
+  -e REGISTRY_HTTP_TLS_KEY=/certs/domain.key \
+  -p 80:80 \
+  registry:2
+```
+在远程节点机上,还需要将私钥```domain.crt```复制到```/etc/docker/certs.d/myregistrydomain.com:5000/ca.crt```下,```myregistrydomain.com```要与证书内配置的地址一致,然后重启docker服务即可通过https远程访问私有仓库
+若还是不能访问,提示认证问题,则可能是某些系统拦截了证书请求,考虑将证书加入到系统信任中,针对不同linux系统,方法不同
+
+**UBUNTU**
+
+执行如下命令
+```bash
+$ cp certs/domain.crt /usr/local/share/ca-certificates/myregistrydomain.com.crt
+update-ca-certificates
+```
+
+**Red Hat Enterprise Linux**
+
+```bash
+$ cp certs/domain.crt /etc/pki/ca-trust/source/anchors/myregistrydomain.com.crt
+update-ca-trust
+```
+**Oracle Linux**
+
+```bash
+$ update-ca-trust enable
+```
+然后重启docker服务,再尝试访问私有仓库
+
+> 网上流行用nginx反向代理做https认证,虽然我也没搞明白为什么要这么做,但依葫芦画瓢我也写下来
+
+首先安装最新的nginx,不会的可以参考[官方文档](http://nginx.org/en/linux_packages.html)进行安装
+大致是先按照官方文档添加```yum```源,然后通过```yum makecache```创建缓存,如果出问题,可以尝试先```yum clean all```清理缓存,再重新创建,最后通过```yum install nginx```安装nginx
+验证nginx是否安装好,可以通过```nginx --help```命令,如果已经有nginx命令了,应该是安装好了,或者通过```systemctl start nginx```启动nginx,访问```localhost<主机ip>```nginx默认监听80端口,是http默认端口,所以url后面可以不用接端口号,如果显示nginx欢迎页面,则表示nginx安装成功
