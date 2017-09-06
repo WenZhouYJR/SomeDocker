@@ -237,5 +237,76 @@ $ update-ca-trust enable
 **通过nginx反向代理设置https服务**
 
 首先安装最新的nginx,不会的可以参考[官方文档](http://nginx.org/en/linux_packages.html)进行安装
+
 大致是先按照官方文档添加```yum```源,然后通过```yum makecache```创建缓存,如果出问题,可以尝试先```yum clean all```清理缓存,再重新创建,最后通过```yum install nginx```安装nginx
+
 验证nginx是否安装好,可以通过```nginx --help```命令,如果已经有nginx命令了,应该是安装好了,或者通过```systemctl start nginx```启动nginx,访问```localhost<主机ip>```nginx默认监听80端口,是http默认端口,所以url后面可以不用接端口号,如果显示nginx欢迎页面,则表示nginx安装成功
+
+**配置nginx**
+
+在```/etc/nginx/```目录下创建docker-registry.conf(文件名也可自定义,和后面的文件有关联),填入一下内容,这些内容可以在docker官网[nginx代理配置](https://docs.docker.com/registry/recipes/nginx/)找到相关说明
+```text
+proxy_pass http://docker-registry;
+proxy_set_header Host $http_host;   # required for docker client's sake
+proxy_set_header X-Real-IP $remote_addr;   # pass on real client's IP
+proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_read_timeout 900;
+```
+然后再```/etc/nginx/conf.d```目录下创建registry.conf(文件名也可自定义),填入以下内容,这部分内容是nginx的代理配置,引导nginx将请求指向哪里
+```text
+# For versions of nginx	> 1.3.9	that include chunked transfer encoding support
+# Replace with appropriate values where	necessary
+ 
+upstream docker-registry { 
+	server localhost:5000; 	  # 这里是docker-registry的地址
+}
+
+# uncomment if you want	a 301 redirect for users attempting to connect
+# on port 80
+# NOTE:	docker client will still fail. This is just for	convenience
+
+# server {
+# 	listen *:80;
+# 	server_name my.docker.registry.com;
+# 	return 301 https://$server_name$request_uri;
+# }
+
+server {
+	listen 443;
+	server_name czy.registry.com;
+	
+	ssl on;  # 打开ssl
+	ssl_certificate /mnt/registry/certs/registry.crt;  # 公钥证书
+	ssl_certificate_key /mnt/registry/certs/registry.key;  # 私钥
+	
+	client_max_body_size 0;  # disable any limits to avoid HTTP 413 for large image uploads
+	
+	# required to avoid HTTP 411: see Issue #1486 (https://github.com/docker/docker/issues/1486)
+	chunked_transfer_encoding on;
+	
+	location /v2/ {
+		auth_basic "Registry realm";
+		auth_basic_user_file /mnt/registry/auth/nginx.htpasswd;
+		add_header 'Docker-Distribution-Api-Version' 'registry/2.0' always;
+		include docker-registry.conf;
+	}
+}
+```
+这段配置中```/mnt/registry/auth/nginx.htpasswd```文件是存帐号密码的文件,访问私库需要提供账号密码,如果不想输入账号秘密,就不要这么配置,具体怎么配,上网查一下,帐号密码文件是用以下代码生成,```htpasswd```是```apache2-utils```提供的功能,如果找不到```htpasswd```,可以用```yum install apache2-utils```安装
+```bash
+htpasswd -cb /mnt/registry/auth/nginx.htpasswd admin admin
+```
+公钥私钥就是之前生成的公钥私钥的路径
+
+现在剩下最后一部,就是修改hosts,也可以修改公司网络的DNS,一劳永逸,如果不方便需改DNS,就可以修改本机hosts,修改之后上传和下载镜像就可以写成```czy.registry.com/<namespace>/<imagename>:tag```,因为443是https的默认端口,所以域名后面可以不用接端口了
+
+至此,docker平台基本可以使用了,但是还有很多问题没有解决,还在持续优化中
+问题:
+* 在shipyard中增加仓库只能显示镜像名称,不能拉取
+* shipyard的images页面没有显示node节点信息
+* shipyard增加节点后,启动容器无法启动老节点的容器,只能启动新加入节点的容器
+
+**遇到的坑**
+
+因为docker容器与容器之间通信是通过docker0的虚拟网卡,有自己的ip,所以如果shipyard和registry搭建在同一台电脑的话,给shipyard增加仓库的时候,填写外部域名怎么也添加不上,只能写docker容器内部的ip就能加上了,我采用的方式是通过link方式,链接两个容器,这样可以方便在重启后ip变化导致有需要重新添加的情况.
