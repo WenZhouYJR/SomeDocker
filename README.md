@@ -303,7 +303,7 @@ htpasswd -cb /mnt/registry/auth/nginx.htpasswd admin admin
 
 至此,docker平台基本可以使用了,但是还有很多问题没有解决,还在持续优化中
 问题:
-* 在shipyard中增加仓库只能显示镜像名称,不能拉取
+* ~~在shipyard中增加仓库只能显示镜像名称,不能拉取~~
 * shipyard的images页面没有显示node节点信息
 * shipyard增加节点后,启动容器无法启动老节点的容器,只能启动新加入节点的容器
 
