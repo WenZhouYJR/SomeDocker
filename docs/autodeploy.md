@@ -81,7 +81,7 @@ echo "docker run --name=$CONTAINER -d -p 10086:8080 $REPOSITORY:$TAG" | bash -s
 
 下面这是Dockerfile的写法,由于这个项目很简单,只需要依赖一个jdk,一个tomcat就能跑起来,所以我之前做了一个已经有jdk和tomcat的基础镜像,我基于该基础镜像直接生成一个新的镜像,只需要将我的项目代码放到tomcat的webapps路径下就行了
 
-```txt
+```bash
 # 依赖的基础镜像
 FROM ck.czy/tomcat:clean
 
